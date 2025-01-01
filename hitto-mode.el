@@ -46,7 +46,7 @@
   (if links (progn (hitto-cache-single-page (car links) chapter-id iteration)
                    (hitto-cache-from-links (cdr links) chapter-id (+ iteration 1)))))
 (defun hitto-cache-single-page (link chapter-id iteration)
-  (let ((file-name (format "%s/%s/%s.png" hitto-view-cache-directory chapter-id iteration)))
+  (let ((file-name (format "%s/%s/%06d.png" hitto-view-cache-directory chapter-id iteration)))
     (unless (file-exists-p file-name)
         (plz 'get link :as `(file ,file-name)))))
 
@@ -87,7 +87,8 @@
         )
      (progn
        (print (format "Caching %s %s" selected-chapter-name selected-chapter-id))
-       (hitto-cache-chapter selected-chapter-id))))
+       (hitto-cache-chapter selected-chapter-id)
+       (hitto-read-start selected-chapter-id selected-chapter-name))))
 
 (defun hitto-search-and-cache-first (manga-string)
   "Search for manga. First point of contact"
@@ -106,6 +107,49 @@
   (while keys
     (setq alist (cdr (assoc (pop keys) alist))))
   alist)
+
+
+;; Displaying images
+(define-derived-mode hitto-mode image-mode "Manga Reader"
+  :keymap hitto-viewing-keymap)
+
+(setq-default hitto-last-used-buffer nil)
+
+(defun hitto-read-start (chapter-id name &optional page)
+  (or page (setq page 0))
+  (let ((image-buffer (get-buffer-create (format "*%s*" name))))
+    (progn
+      (setq-default hitto-last-used-buffer image-buffer)
+      (with-current-buffer image-buffer
+        (make-local-variable 'hitto-page-number)
+        (make-local-variable 'hitto-image-files)
+        (setq hitto-image-files (vconcat (directory-files (format "%s/%s" hitto-view-cache-directory chapter-id) t "\\.png$")))
+        (hitto-read-page image-buffer page)))))
+
+(defun hitto-read-page (buffer page)
+  (with-current-buffer buffer
+    (switch-to-buffer buffer)
+    (hitto-mode)
+    (erase-buffer)
+    (insert-image (create-image (aref hitto-image-files page)))
+    (setq hitto-page-number page)))
+
+(defun hitto-next-page ()
+  (interactive)
+  (with-current-buffer hitto-last-used-buffer
+    (hitto-read-page hitto-last-used-buffer (+ hitto-page-number 1))))
+
+(defun hitto-previous-page ()
+  (interactive)
+  (with-current-buffer hitto-last-used-buffer
+    (hitto-read-page hitto-last-used-buffer (- hitto-page-number 1))))
+
+
+(defvar-keymap hitto-viewing-keymap
+  "n" #'hitto-next-page
+  "p" #'hitto-previous-page
+  "q" #'quit-window
+  )
 
 (provide 'hitto-mode)
 ;;; hitto-mode.el ends here
