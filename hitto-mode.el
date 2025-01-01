@@ -129,7 +129,6 @@
 (defun hitto-read-page (buffer page)
   (with-current-buffer buffer
     (switch-to-buffer buffer)
-    (hitto-mode)
     (erase-buffer)
     (insert-image (create-image (aref hitto-image-files page)))
     (setq hitto-page-number page)))
