@@ -63,7 +63,7 @@
       ((chapter (assoc-recursive chapter-data 'attributes 'chapter))
       (language (assoc-recursive chapter-data 'attributes 'translatedLanguage))
       (title (assoc-recursive chapter-data 'attributes 'title)))
-    (format "Chapter %s %s lang: %s" chapter title language)
+    (format "Chapter %s %s" chapter title)
     ))
 
 
@@ -80,7 +80,9 @@
         (selected-manga-name
          (completing-read "Manga Titles: " title-to-id-alist))
         (selected-manga-id (cdr (assoc selected-manga-name title-to-id-alist)))
-        (chapter-json-data (plz 'get (format "https://api.mangadex.org/manga/%s/feed" selected-manga-id) :as #'json-read))
+        (chapter-json-data (plz 'get (format "https://api.mangadex.org/manga/%s/feed?limit=100&translatedLanguage[]=en&%s=asc"
+                                             selected-manga-id
+                                             (url-hexify-string "order[chapter]")) :as #'json-read))
         (chapter-data-list (cdr (assoc 'data chapter-json-data)))
         (chapter-choice-to-id-alist (mapcar
                                      (lambda (chapter) (cons (hitto-chapter-formatted-metadata-string chapter) (cdr (assoc 'id chapter))))
@@ -93,17 +95,6 @@
        (print (format "Caching %s %s" selected-chapter-name selected-chapter-id))
        (hitto-cache-chapter selected-chapter-id)
        (hitto-read-start selected-chapter-id selected-chapter-name))))
-
-(defun hitto-search-and-cache-first (manga-string)
-  "Search for manga. First point of contact"
-  (interactive "s")
-   (hitto-cache-chapter (cdr (assoc 'latestUploadedChapter
-          (cdr (assoc 'attributes
-          (aref (cdr (assoc 'data
-                      (plz 'get
-                        (format "https://api.mangadex.org/manga?title=%s" manga-string)
-                        :as #'json-read)))
-                0)))))))
 
 ;; Helper functions taken from somewhere on the internet
 (defun assoc-recursive (alist &rest keys)
@@ -133,7 +124,6 @@
   (or page (setq page 0))
   (let ((image-buffer (get-buffer-create (format "*%s*" name))))
     (progn
-      (kill-buffer image-buffer)
       (setq-default hitto-last-used-buffer image-buffer)
       (with-current-buffer image-buffer
         (hitto-mode)
@@ -146,14 +136,14 @@
 (defun hitto-read-page (buffer page)
   (let ((page-scale (hitto-page-scale)))
     (if (and (< page (length hitto-image-files)) (>= page 0))
-        (with-current-buffer buffer
-          (hitto-mode-nav/body)
-          (switch-to-buffer buffer)
-          (erase-buffer)
-          (insert-image (create-image
-                         (aref hitto-image-files page) nil nil :scale page-scale))
-          (setq hitto-page-number page))
-      (print "Page out of bounds."))))
+        (progn
+          (with-current-buffer buffer
+            (switch-to-buffer buffer)
+            (erase-buffer)
+            (insert-image (create-image
+                           (aref hitto-image-files page) nil nil :scale page-scale))
+            (setq hitto-page-number page))
+          (hitto-mode-nav/body)) nil)))
 
 (defun hitto-next-page ()
   (interactive)
