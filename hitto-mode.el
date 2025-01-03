@@ -161,6 +161,17 @@
   (with-current-buffer hitto-last-used-buffer
     (hitto-read-page hitto-last-used-buffer (- hitto-page-number 1))))
 
+(defun hitto-scroll-up ()
+  (interactive)
+  (set-window-vscroll (selected-window) (- (window-vscroll (selected-window)) 10)))
+
+(defun hitto-scroll-down ()
+  (interactive)
+    (set-window-vscroll (selected-window) (+ (window-vscroll (selected-window)) 10)))
+
+(defun hitto-set-this-as-last-used-buffer ()
+  (interactive)
+  (setq hitto-last-used-buffer (current-buffer)))
 
 ;; Bindings
 (defhydra hitto-mode-nav ()
@@ -168,7 +179,8 @@
   ("p" hitto-previous-page "Prev")
   ("+" image-increase-size "Zoom In")
   ("-" image-decrease-size "Zoom Out")
-  )
+  ("u" hitto-scroll-up "Up")
+  ("d" hitto-scroll-down "Down"))
 
 (provide 'hitto-mode)
 ;;; hitto-mode.el ends here
