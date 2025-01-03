@@ -5,6 +5,8 @@
 
 (require 'image-mode)
 (require 'plz)
+(require 'url-util)
+(require 'hydra)
 
 (defgroup hitto-mode nil
   "Mangadex reader"
@@ -68,7 +70,8 @@
   "Search for manga. First point of contact"
   (interactive "s")
    (let*
-       ((json-alist (plz 'get (format "https://api.mangadex.org/manga?title=%s" manga-string) :as #'json-read))
+       ((json-alist (plz 'get (format "https://api.mangadex.org/manga?title=%s"
+                                      (url-hexify-string manga-string)) :as #'json-read))
         (data-list (cdr (assoc 'data json-alist)))
         (title-to-id-alist (mapcar
                            (lambda (manga-data) (cons (hitto-get-title-from-data manga-data) (cdr (assoc 'id manga-data))))
@@ -110,10 +113,20 @@
 
 
 ;; Displaying images
-(define-derived-mode hitto-mode image-mode "Manga Reader"
-  :keymap hitto-viewing-keymap)
+(define-derived-mode hitto-mode image-mode "Manga Reader")
+
+(define-minor-mode hitto-mode-keys-minor-mode
+  "Overriding keys"
+  :lighter "hitto"
+  :keymap (let ((map (make-sparse-keymap)))
+            (define-key map (kbd "C-c C-n") 'hitto-next-page)
+            (define-key map (kbd "C-c C-p") 'hitto-previous-page)
+            (define-key map (kbd "C-c C-j") 'image-scroll-down)
+            (define-key map (kbd "C-c C-k") 'image-scroll-up)
+            map))
 
 (setq-default hitto-last-used-buffer nil)
+(setq hitto-image-files nil)
 
 (defun hitto-read-start (chapter-id name &optional page)
   (or page (setq page 0))
@@ -121,17 +134,22 @@
     (progn
       (setq-default hitto-last-used-buffer image-buffer)
       (with-current-buffer image-buffer
+        (hitto-mode)
+        (hitto-mode-keys-minor-mode 1)
         (make-local-variable 'hitto-page-number)
         (make-local-variable 'hitto-image-files)
         (setq hitto-image-files (vconcat (directory-files (format "%s/%s" hitto-view-cache-directory chapter-id) t "\\.png$")))
         (hitto-read-page image-buffer page)))))
 
 (defun hitto-read-page (buffer page)
-  (with-current-buffer buffer
-    (switch-to-buffer buffer)
-    (erase-buffer)
-    (insert-image (create-image (aref hitto-image-files page)))
-    (setq hitto-page-number page)))
+  (if (and (< page (length hitto-image-files)) (>= page 0))
+      (with-current-buffer buffer
+        (hitto-mode-nav/body)
+        (switch-to-buffer buffer)
+        (erase-buffer)
+        (insert-image (create-image (aref hitto-image-files page)))
+        (setq hitto-page-number page))
+      (print "Page out of bounds.")))
 
 (defun hitto-next-page ()
   (interactive)
@@ -144,10 +162,12 @@
     (hitto-read-page hitto-last-used-buffer (- hitto-page-number 1))))
 
 
-(defvar-keymap hitto-viewing-keymap
-  "n" #'hitto-next-page
-  "p" #'hitto-previous-page
-  "q" #'quit-window
+;; Bindings
+(defhydra hitto-mode-nav ()
+  ("n" hitto-next-page "Next")
+  ("p" hitto-previous-page "Prev")
+  ("+" image-increase-size "Zoom In")
+  ("-" image-decrease-size "Zoom Out")
   )
 
 (provide 'hitto-mode)
