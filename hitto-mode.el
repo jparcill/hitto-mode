@@ -53,7 +53,6 @@
         (plz 'get link :as `(file ,file-name)))))
 
 ;; Search functions
-;;
 (defun hitto-get-title-from-data (manga-data)
   (assoc-recursive manga-data 'attributes 'title 'en))
 
@@ -147,7 +146,9 @@
         (hitto-mode-nav/body)
         (switch-to-buffer buffer)
         (erase-buffer)
-        (insert-image (create-image (aref hitto-image-files page)))
+        (insert-image (create-image
+                       (aref hitto-image-files page)))
+        (hitto-rescale-image)
         (setq hitto-page-number page))
       (print "Page out of bounds.")))
 
@@ -169,18 +170,40 @@
   (interactive)
     (set-window-vscroll (selected-window) (+ (window-vscroll (selected-window)) 10)))
 
-(defun hitto-set-this-as-last-used-buffer ()
+(setq hitto-image-size-factor 0)
+
+(defun hitto-increase-size ()
   (interactive)
-  (setq hitto-last-used-buffer (current-buffer)))
+  (progn
+    (setq hitto-image-size-factor (+ hitto-image-size-factor 2))
+    (image-increase-size)))
+
+(defun hitto-decrease-size ()
+  (interactive)
+  (progn
+    (setq hitto-image-size-factor (- hitto-image-size-factor 2))
+    (image-decrease-size)))
+
+(defun hitto-page-scale ()
+  (+ (/ hitto-image-size-factor 10.0) 1))
+
+(defun hitto-rescale-image ()
+  (cond ((> hitto-image-size-factor 0) (image-increase-size hitto-image-size-factor))
+        ((< hitto-image-size-factor 0) (image-decrease-size (* -1 hitto-image-size-factor)))))
 
 ;; Bindings
 (defhydra hitto-mode-nav ()
   ("n" hitto-next-page "Next")
   ("p" hitto-previous-page "Prev")
-  ("+" image-increase-size "Zoom In")
-  ("-" image-decrease-size "Zoom Out")
+  ("+" hitto-increase-size "Zoom In")
+  ("-" hitto-decrease-size "Zoom Out")
   ("u" hitto-scroll-up "Up")
   ("d" hitto-scroll-down "Down"))
+
+;; Random helper functions for myself
+(defun hitto-set-this-as-last-used-buffer ()
+  (interactive)
+  (setq hitto-last-used-buffer (current-buffer)))
 
 (provide 'hitto-mode)
 ;;; hitto-mode.el ends here
