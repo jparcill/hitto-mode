@@ -41,8 +41,10 @@
        data-list))))
 
 (defun hitto-cache-chapter (chapter-id)
-  (let ((chapter-links (hitto-get-chapter-links chapter-id)))
-    (hitto-cache-from-links chapter-links chapter-id 0)))
+  (if (file-directory-p (format "%s/%s" hitto-view-cache-directory chapter-id))
+      (print "Chapter already cached")
+    (let ((chapter-links (hitto-get-chapter-links chapter-id)))
+      (hitto-cache-from-links chapter-links chapter-id 0))))
 
 (defun hitto-cache-from-links (links chapter-id iteration)
   (if links (progn (hitto-cache-single-page (car links) chapter-id iteration)
@@ -131,6 +133,7 @@
   (or page (setq page 0))
   (let ((image-buffer (get-buffer-create (format "*%s*" name))))
     (progn
+      (kill-buffer image-buffer)
       (setq-default hitto-last-used-buffer image-buffer)
       (with-current-buffer image-buffer
         (hitto-mode)
@@ -141,16 +144,16 @@
         (hitto-read-page image-buffer page)))))
 
 (defun hitto-read-page (buffer page)
-  (if (and (< page (length hitto-image-files)) (>= page 0))
-      (with-current-buffer buffer
-        (hitto-mode-nav/body)
-        (switch-to-buffer buffer)
-        (erase-buffer)
-        (insert-image (create-image
-                       (aref hitto-image-files page)))
-        (hitto-rescale-image)
-        (setq hitto-page-number page))
-      (print "Page out of bounds.")))
+  (let ((page-scale (hitto-page-scale)))
+    (if (and (< page (length hitto-image-files)) (>= page 0))
+        (with-current-buffer buffer
+          (hitto-mode-nav/body)
+          (switch-to-buffer buffer)
+          (erase-buffer)
+          (insert-image (create-image
+                         (aref hitto-image-files page) nil nil :scale page-scale))
+          (setq hitto-page-number page))
+      (print "Page out of bounds."))))
 
 (defun hitto-next-page ()
   (interactive)
@@ -172,24 +175,23 @@
 
 (setq hitto-image-size-factor 0)
 
+(defun hitto-refresh-page ()
+  (hitto-read-page (current-buffer) hitto-page-number))
+
 (defun hitto-increase-size ()
   (interactive)
   (progn
-    (setq hitto-image-size-factor (+ hitto-image-size-factor 2))
-    (image-increase-size)))
+    (setq hitto-image-size-factor (+ hitto-image-size-factor 1))
+    (hitto-refresh-page)))
 
 (defun hitto-decrease-size ()
   (interactive)
   (progn
-    (setq hitto-image-size-factor (- hitto-image-size-factor 2))
-    (image-decrease-size)))
+    (setq hitto-image-size-factor (- hitto-image-size-factor 1))
+    (hitto-refresh-page)))
 
 (defun hitto-page-scale ()
   (+ (/ hitto-image-size-factor 10.0) 1))
-
-(defun hitto-rescale-image ()
-  (cond ((> hitto-image-size-factor 0) (image-increase-size hitto-image-size-factor))
-        ((< hitto-image-size-factor 0) (image-decrease-size (* -1 hitto-image-size-factor)))))
 
 ;; Bindings
 (defhydra hitto-mode-nav ()
