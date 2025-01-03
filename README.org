@@ -6,8 +6,8 @@ Hitto Mode (play on Hittoman Reborn!) is a manga reader package.
 * Rough Roadmap
 ** MVP
 - [X] search for manga on mangadex
-- [ ] cache the pages of the manga
-- [ ] mode to read the cached pages of the manga
+- [X] cache the pages of the manga
+- [X] mode to read the cached pages of the manga
 
 ** Other Features to implement
 - [ ] Able to use other api's other than mangadex
