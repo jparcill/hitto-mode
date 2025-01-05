@@ -6,17 +6,42 @@
 (require 'image-mode)
 (require 'plz)
 (require 'url-util)
-(require 'hydra)
 
-(defgroup hitto-mode nil
-  "Mangadex reader"
-;; todo
-;;  :link '(function-link doc-view)
-  :version "29.4"
- ;; :group 'applications
- ;; :group 'data
- ;; :group 'multimedia
-  :prefix "hitto-")
+;; Displaying images
+(defvar-keymap hitto-mode-map
+  :parent image-mode-map
+  "Q"        #'kill-this-buffer
+  ;; Navigation in the document
+  "n"        #'hitto-next-page
+  "p"        #'hitto-previous-page
+  "<next>"   #'forward-page
+  "<prior>"  #'backward-page
+  "<remap> <forward-page>"   #'hitto-next-page
+  "<remap> <backward-page>"  #'hitto-previous-page
+  "DEL"      #'hitto-scroll-down-or-previous-page
+  "C-n"      #'hitto-scroll-down
+  "<down>"   #'hitto-scroll-down
+  "<remap> <next-line>"      #'hitto-scroll-down
+  "C-p"          #'hitto-scroll-up
+  "<up>"         #'hitto-scroll-up
+  "<remap> <previous-line>"  #'hitto-scroll-up
+  "RET"      #'image-next-line
+  ;; Zoom in/out.
+  "+"        #'hitto-increase-size
+  "="        #'hitto-increase-size
+  "-"        #'hitto-decrease-size)
+
+(evil-define-key 'normal hitto-mode-map "j" 'hitto-scroll-down)
+(evil-define-key 'normal hitto-mode-map "k" 'hitto-scroll-up)
+(evil-define-key 'normal hitto-mode-map "l" 'hitto-next-page)
+(evil-define-key 'normal hitto-mode-map "n" 'hitto-next-page)
+(evil-define-key 'normal hitto-mode-map "h" 'hitto-previous-page)
+(evil-define-key 'normal hitto-mode-map "p" 'hitto-previous-page)
+(evil-define-key 'normal hitto-mode-map "+" 'hitto-increase-size)
+(evil-define-key 'normal hitto-mode-map "=" 'hitto-increase-size)
+(evil-define-key 'normal hitto-mode-map "-" 'hitto-decrease-size)
+
+(define-derived-mode hitto-mode image-mode "Hitto Manga")
 
 (defcustom hitto-view-cache-directory
   (expand-file-name (format "hitto%d" (user-uid))
@@ -29,16 +54,19 @@
   )
 
 (defun hitto-get-chapter-links (chapter)
-  ;; TODO refactor to use let*
   (let ((json-alist
         (plz 'get
           (format "https://api.mangadex.org/at-home/server/%s" chapter) :as #'json-read)))
-    (let ((base-url (cdr (assoc 'baseUrl json-alist)))
-          (chapter-hash (cdr (assoc 'hash (cdr (assoc 'chapter json-alist)))))
-          (data-list (cdr (assoc 'data (cdr (assoc 'chapter json-alist))))))
-      (mapcar
-       (lambda (data) (hitto-form-img-link base-url "data" chapter-hash data))
-       data-list))))
+      (let ((base-url (cdr (assoc 'baseUrl json-alist)))
+            (chapter-hash (cdr (assoc 'hash (cdr (assoc 'chapter json-alist)))))
+            (data-list (cdr (assoc 'data (cdr (assoc 'chapter json-alist))))))
+        (if (seq-empty-p data-list)
+            (progn
+              (print "No chapters found")
+              '())
+          (mapcar
+           (lambda (data) (hitto-form-img-link base-url "data" chapter-hash data))
+           data-list)))))
 
 (defun hitto-page-file-name (chapter-id iteration)
   (format "%s/%s/%06d.png" hitto-view-cache-directory chapter-id iteration))
@@ -111,20 +139,7 @@
     (setq alist (cdr (assoc (pop keys) alist))))
   alist)
 
-
-;; Displaying images
-(define-derived-mode hitto-mode image-mode "Manga Reader")
-
-(define-minor-mode hitto-mode-keys-minor-mode
-  "Overriding keys"
-  :lighter "hitto"
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "C-c C-n") 'hitto-next-page)
-            (define-key map (kbd "C-c C-p") 'hitto-previous-page)
-            (define-key map (kbd "C-c C-j") 'image-scroll-down)
-            (define-key map (kbd "C-c C-k") 'image-scroll-up)
-            map))
-
+;; reading
 (setq-default hitto-last-used-buffer nil)
 
 (defun hitto-read-start (chapter-id name &optional page)
@@ -134,13 +149,12 @@
       (setq-default hitto-last-used-buffer image-buffer)
       (with-current-buffer image-buffer
         (hitto-mode)
-        (hitto-mode-keys-minor-mode 1)
         (make-local-variable 'hitto-page-number)
         (make-local-variable 'hitto-chapter-id)
         (setq hitto-chapter-id chapter-id)
         (hitto-read-page image-buffer page)))))
 
-(defun hitto-read-page (buffer page &optional should-refresh)
+(defun hitto-read-page (buffer page)
   (if (file-exists-p (hitto-page-file-name hitto-chapter-id page))
       (let ((page-scale (hitto-page-scale))
             (image-file (hitto-page-file-name hitto-chapter-id page))) ;; For keeping the page the same size
@@ -149,8 +163,7 @@
             (switch-to-buffer buffer)
             (erase-buffer)
             (insert-image (create-image image-file nil nil :scale page-scale))
-            (setq hitto-page-number page))
-          (hitto-mode-nav/body))) nil))
+            (setq hitto-page-number page)))) nil))
 
 (defun hitto-next-page ()
   (interactive)
@@ -189,16 +202,6 @@
 
 (defun hitto-page-scale ()
   (+ (/ hitto-image-size-factor 10.0) 1))
-
-;; Bindings
-(defhydra hitto-mode-nav ()
-  ("n" hitto-next-page "Next")
-  ("p" hitto-previous-page "Prev")
-  ("+" hitto-increase-size "Zoom In")
-  ("-" hitto-decrease-size "Zoom Out")
-  ("k" hitto-scroll-up "Up")
-  ("j" hitto-scroll-down "Down")
-  ("q" kill-this-buffer "quit"))
 
 ;; Random helper functions for myself
 (defun hitto-set-this-as-last-used-buffer ()
