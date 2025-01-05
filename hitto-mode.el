@@ -40,19 +40,27 @@
        (lambda (data) (hitto-form-img-link base-url "data" chapter-hash data))
        data-list))))
 
+(defun hitto-page-file-name (chapter-id iteration)
+  (format "%s/%s/%06d.png" hitto-view-cache-directory chapter-id iteration))
+
 (defun hitto-cache-chapter (chapter-id)
   (if (file-directory-p (format "%s/%s" hitto-view-cache-directory chapter-id))
       (print "Chapter already cached")
     (let ((chapter-links (hitto-get-chapter-links chapter-id)))
       (hitto-cache-from-links chapter-links chapter-id 0))))
 
+(setq hitto-when-to-async 5)
+
 (defun hitto-cache-from-links (links chapter-id iteration)
   (if links (progn (hitto-cache-single-page (car links) chapter-id iteration)
                    (hitto-cache-from-links (cdr links) chapter-id (+ iteration 1)))))
+
 (defun hitto-cache-single-page (link chapter-id iteration)
-  (let ((file-name (format "%s/%s/%06d.png" hitto-view-cache-directory chapter-id iteration)))
+  (let ((file-name (hitto-page-file-name chapter-id iteration)))
     (unless (file-exists-p file-name)
-        (plz 'get link :as `(file ,file-name)))))
+      (if (< iteration hitto-when-to-async)
+        (plz 'get link :as `(file ,file-name))
+        (plz 'get link :as `(file ,file-name) :then nil)))))
 
 ;; Search functions
 (defun hitto-get-title-from-data (manga-data)
@@ -118,7 +126,6 @@
             map))
 
 (setq-default hitto-last-used-buffer nil)
-(setq hitto-image-files nil)
 
 (defun hitto-read-start (chapter-id name &optional page)
   (or page (setq page 0))
@@ -129,21 +136,21 @@
         (hitto-mode)
         (hitto-mode-keys-minor-mode 1)
         (make-local-variable 'hitto-page-number)
-        (make-local-variable 'hitto-image-files)
-        (setq hitto-image-files (vconcat (directory-files (format "%s/%s" hitto-view-cache-directory chapter-id) t "\\.png$")))
+        (make-local-variable 'hitto-chapter-id)
+        (setq hitto-chapter-id chapter-id)
         (hitto-read-page image-buffer page)))))
 
-(defun hitto-read-page (buffer page)
-  (let ((page-scale (hitto-page-scale)))
-    (if (and (< page (length hitto-image-files)) (>= page 0))
+(defun hitto-read-page (buffer page &optional should-refresh)
+  (if (file-exists-p (hitto-page-file-name hitto-chapter-id page))
+      (let ((page-scale (hitto-page-scale))
+            (image-file (hitto-page-file-name hitto-chapter-id page))) ;; For keeping the page the same size
         (progn
           (with-current-buffer buffer
             (switch-to-buffer buffer)
             (erase-buffer)
-            (insert-image (create-image
-                           (aref hitto-image-files page) nil nil :scale page-scale))
+            (insert-image (create-image image-file nil nil :scale page-scale))
             (setq hitto-page-number page))
-          (hitto-mode-nav/body)) nil)))
+          (hitto-mode-nav/body))) nil))
 
 (defun hitto-next-page ()
   (interactive)
@@ -157,11 +164,11 @@
 
 (defun hitto-scroll-up ()
   (interactive)
-  (set-window-vscroll (selected-window) (- (window-vscroll (selected-window)) 10)))
+  (set-window-vscroll (selected-window) (- (window-vscroll (selected-window)) 5)))
 
 (defun hitto-scroll-down ()
   (interactive)
-    (set-window-vscroll (selected-window) (+ (window-vscroll (selected-window)) 10)))
+    (set-window-vscroll (selected-window) (+ (window-vscroll (selected-window)) 5)))
 
 (setq hitto-image-size-factor 0)
 
@@ -189,8 +196,9 @@
   ("p" hitto-previous-page "Prev")
   ("+" hitto-increase-size "Zoom In")
   ("-" hitto-decrease-size "Zoom Out")
-  ("u" hitto-scroll-up "Up")
-  ("d" hitto-scroll-down "Down"))
+  ("k" hitto-scroll-up "Up")
+  ("j" hitto-scroll-down "Down")
+  ("q" kill-this-buffer "quit"))
 
 ;; Random helper functions for myself
 (defun hitto-set-this-as-last-used-buffer ()
