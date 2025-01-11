@@ -1,4 +1,5 @@
-;;; hitto-mode.el --- Description -*- lexical-binding: t; -*-
+;;; -*- lexical-binding: t -*-
+;;; hitto-mode.el --- Description
 ;;
 ;; Copyright (C) 2024 Jared Arcilla
 ;; TODO Description
@@ -41,7 +42,7 @@
 (evil-define-key 'normal hitto-mode-map "=" 'hitto-increase-size)
 (evil-define-key 'normal hitto-mode-map "-" 'hitto-decrease-size)
 
-(define-derived-mode hitto-mode image-mode "Hitto Manga")
+(define-derived-mode hitto-mode fundamental-mode "Hitto Manga")
 
 (defcustom hitto-view-cache-directory
   (expand-file-name (format "hitto%d" (user-uid))
@@ -103,6 +104,23 @@
     ))
 
 
+
+(defun hitto-query-for-chapters-data (manga-id)
+  "Query mangadex. Data is formatted like Vector[Chapter Alist]"
+  (let*
+      ((chapters-json-data (plz 'get (format "https://api.mangadex.org/manga/%s/feed?limit=100&translatedLanguage[]=en&%s=asc&includeEmptyPages=0"
+                                             manga-id
+                                             (url-hexify-string "order[chapter]")) :as #'json-read))
+       (chapters-data-list (cdr (assoc 'data chapters-json-data))))
+    chapters-data-list))
+
+(defun hitto-chapter-data-from-chapter-number (manga-id chapter-number)
+  (progn
+    (car (seq-filter (lambda (chapter-data) (equal (assoc-recursive chapter-data 'attributes 'chapter) chapter-number))
+                (hitto-query-for-chapters-data manga-id)))
+    )
+  )
+
 (defun hitto-search-manga (manga-string)
   "Search for manga. First point of contact"
   (interactive "s")
@@ -116,21 +134,42 @@
         (selected-manga-name
          (completing-read "Manga Titles: " title-to-id-alist))
         (selected-manga-id (cdr (assoc selected-manga-name title-to-id-alist)))
-        (chapter-json-data (plz 'get (format "https://api.mangadex.org/manga/%s/feed?limit=100&translatedLanguage[]=en&%s=asc"
-                                             selected-manga-id
-                                             (url-hexify-string "order[chapter]")) :as #'json-read))
-        (chapter-data-list (cdr (assoc 'data chapter-json-data)))
-        (chapter-choice-to-id-alist (mapcar
-                                     (lambda (chapter) (cons (hitto-chapter-formatted-metadata-string chapter) (cdr (assoc 'id chapter))))
-                                       chapter-data-list))
+        (chapters-data-list (hitto-query-for-chapters-data selected-manga-id))
+        (chapter-choice-to-data-alist (mapcar
+                                     (lambda (chapter) (cons (hitto-chapter-formatted-metadata-string chapter) chapter))
+                                       chapters-data-list))
         (selected-chapter-name
-         (completing-read "Chapter Titles: " chapter-choice-to-id-alist))
-        (selected-chapter-id (cdr (assoc selected-chapter-name chapter-choice-to-id-alist)))
+         (completing-read "Chapter Titles: " chapter-choice-to-data-alist))
+        (selected-chapter-data (cdr (assoc selected-chapter-name chapter-choice-to-data-alist)))
+        (selected-chapter-id (cdr (assoc 'id selected-chapter-data)))
+        (selected-chapter-number (string-to-number (assoc-recursive selected-chapter-data 'attributes 'chapter)))
         )
      (progn
-       (print (format "Caching %s %s" selected-chapter-name selected-chapter-id))
        (hitto-cache-chapter selected-chapter-id)
-       (hitto-read-start selected-chapter-id selected-chapter-name))))
+       (hitto-save-metadata-to-buffer-local-vars
+        selected-manga-id
+        selected-manga-name
+        selected-chapter-id
+        selected-chapter-number)
+       (hitto-read-start selected-chapter-id selected-manga-name))))
+
+(defun hitto-save-metadata-to-buffer-local-vars (manga-id manga-name chapter-id chapter-number)
+  (progn
+    (switch-to-buffer (get-buffer-create (format "*%s*" manga-name)))
+    (hitto-mode)
+    (setq-local hitto-chapter-id chapter-id
+                hitto-chapter-number chapter-number
+                hitto-manga-name manga-name
+                hitto-manga-id manga-id)))
+
+(defun hitto-save-metadata-to-current-buffer (manga-id manga-name chapter-id chapter-number)
+  (interactive)
+  (progn
+    (setq hitto-chapter-id chapter-id)
+    (setq hitto-chapter-number chapter-number)
+    (setq hitto-manga-name manga-name)
+    (setq hitto-manga-id manga-id)
+    ))
 
 ;; Helper functions taken from somewhere on the internet
 (defun assoc-recursive (alist &rest keys)
@@ -146,34 +185,26 @@
   (or page (setq page 0))
   (let ((image-buffer (get-buffer-create (format "*%s*" name))))
     (progn
-      (setq-default hitto-last-used-buffer image-buffer)
-      (with-current-buffer image-buffer
-        (hitto-mode)
-        (make-local-variable 'hitto-page-number)
-        (make-local-variable 'hitto-chapter-id)
-        (setq hitto-chapter-id chapter-id)
-        (hitto-read-page image-buffer page)))))
+      (switch-to-buffer image-buffer)
+      (hitto-read-page image-buffer page))))
 
 (defun hitto-read-page (buffer page)
   (if (file-exists-p (hitto-page-file-name hitto-chapter-id page))
       (let ((page-scale (hitto-page-scale))
             (image-file (hitto-page-file-name hitto-chapter-id page))) ;; For keeping the page the same size
         (progn
-          (with-current-buffer buffer
-            (switch-to-buffer buffer)
-            (erase-buffer)
-            (insert-image (create-image image-file nil nil :scale page-scale))
-            (setq hitto-page-number page)))) nil))
+          (switch-to-buffer buffer)
+          (erase-buffer)
+          (insert-image (create-image image-file nil nil :scale page-scale))
+          (setq hitto-page-number page)))) nil)
 
 (defun hitto-next-page ()
   (interactive)
-  (with-current-buffer hitto-last-used-buffer
-    (hitto-read-page hitto-last-used-buffer (+ hitto-page-number 1))))
+    (hitto-read-page (current-buffer) (+ hitto-page-number 1)))
 
 (defun hitto-previous-page ()
   (interactive)
-  (with-current-buffer hitto-last-used-buffer
-    (hitto-read-page hitto-last-used-buffer (- hitto-page-number 1))))
+    (hitto-read-page (current-buffer) (- hitto-page-number 1)))
 
 (defun hitto-scroll-up ()
   (interactive)
@@ -202,6 +233,18 @@
 
 (defun hitto-page-scale ()
   (+ (/ hitto-image-size-factor 10.0) 1))
+
+(defun hitto-next-chapter ()
+  (interactive)
+  (let*
+    ((next-chapter-number (+ hitto-chapter-number 1))
+     (chapter-data (hitto-chapter-data-from-chapter-number hitto-manga-id (number-to-string next-chapter-number)))
+     (next-chapter-id (cdr (assoc 'id chapter-data))))
+  (progn
+    (hitto-cache-chapter next-chapter-id)
+    (hitto-save-metadata-to-buffer-local-vars hitto-manga-id hitto-manga-name next-chapter-id next-chapter-number)
+    (hitto-read-start next-chapter-id hitto-manga-name)
+    )))
 
 ;; Random helper functions for myself
 (defun hitto-set-this-as-last-used-buffer ()
