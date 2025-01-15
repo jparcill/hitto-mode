@@ -8,6 +8,50 @@
 (require 'plz)
 (require 'url-util)
 
+(defgroup hitto nil
+  "Emacs Manga reader"
+  :version "29.0"
+  :group 'applications
+  :group 'data
+  :group 'multimedia
+  :prefix "hitto-")
+
+
+(defcustom hitto-view-cache-directory
+  (expand-file-name (format "hitto%d" (user-uid))
+                    temporary-file-directory)
+  "The base directory, where the PNG images will be saved."
+  :type 'directory
+  :group 'hitto)
+
+(defcustom hitto-use-evil-bindings t
+  "Apply evil bindings. Similar to pdf-tools"
+  :type 'boolean)
+
+(defvar-local hitto--image-size-factor 0)
+(defvar hitto--when-to-async 5)
+(defvar-local hitto--page-number nil)
+(defvar-local hitto--chapter-number nil)
+(defvar-local hitto--manga-id nil)
+(defvar-local hitto--chapter-id nil)
+(defvar-local hitto--manga-name nil)
+
+(define-derived-mode hitto-mode fundamental-mode "Hitto Mode"
+  (if hitto-use-evil-bindings (hitto-apply-evil-bindings) nil))
+
+(defun hitto-apply-evil-bindings ()
+  (progn
+    (evil-define-key 'normal hitto-mode-map "q" 'kill-this-buffer)
+    (evil-define-key 'normal hitto-mode-map "j" 'hitto-scroll-down)
+    (evil-define-key 'normal hitto-mode-map "k" 'hitto-scroll-up)
+    (evil-define-key 'normal hitto-mode-map "l" 'hitto-next-page)
+    (evil-define-key 'normal hitto-mode-map "n" 'hitto-next-page)
+    (evil-define-key 'normal hitto-mode-map "h" 'hitto-previous-page)
+    (evil-define-key 'normal hitto-mode-map "p" 'hitto-previous-page)
+    (evil-define-key 'normal hitto-mode-map "+" 'hitto-increase-size)
+    (evil-define-key 'normal hitto-mode-map "=" 'hitto-increase-size)
+    (evil-define-key 'normal hitto-mode-map "-" 'hitto-decrease-size)))
+
 (defvar-keymap hitto-mode-map
   :parent image-mode-map
   "Q"        #'kill-this-buffer
@@ -18,7 +62,7 @@
   "<prior>"  #'backward-page
   "<remap> <forward-page>"   #'hitto-next-page
   "<remap> <backward-page>"  #'hitto-previous-page
-  "DEL"      #'hitto-scroll-down-or-previous-page
+  "DEL"      #'hitto-scroll-down
   "C-n"      #'hitto-scroll-down
   "<down>"   #'hitto-scroll-down
   "<remap> <next-line>"      #'hitto-scroll-down
@@ -31,29 +75,7 @@
   "="        #'hitto-increase-size
   "-"        #'hitto-decrease-size)
 
-;; TODO Pull this into a different file
-(evil-define-key 'normal hitto-mode-map "j" 'hitto-scroll-down)
-(evil-define-key 'normal hitto-mode-map "k" 'hitto-scroll-up)
-(evil-define-key 'normal hitto-mode-map "l" 'hitto-next-page)
-(evil-define-key 'normal hitto-mode-map "n" 'hitto-next-page)
-(evil-define-key 'normal hitto-mode-map "h" 'hitto-previous-page)
-(evil-define-key 'normal hitto-mode-map "p" 'hitto-previous-page)
-(evil-define-key 'normal hitto-mode-map "+" 'hitto-increase-size)
-(evil-define-key 'normal hitto-mode-map "=" 'hitto-increase-size)
-(evil-define-key 'normal hitto-mode-map "-" 'hitto-decrease-size)
-
-(define-derived-mode hitto-mode fundamental-mode "Hitto Manga")
-
-(defcustom hitto-view-cache-directory
-  (expand-file-name (format "hitto%d" (user-uid))
-                    temporary-file-directory)
-  "The base directory, where the PNG images will be saved."
-  :type 'directory)
-
-
-(setq hitto-image-size-factor 0)
-(setq hitto-when-to-async 5)
-
+;;;###autoload
 (defun hitto-search-manga (manga-string)
   "Search for manga. First point of contact"
   (interactive "sManga Title: ")
@@ -84,16 +106,16 @@
         selected-manga-name
         selected-chapter-id
         selected-chapter-number)
-       (hitto--read-start selected-chapter-id selected-manga-name))))
+       (hitto--read-start selected-manga-name))))
 
 
 (defun hitto-next-page ()
   (interactive)
-    (hitto--read-page (current-buffer) (+ hitto-page-number 1)))
+    (hitto--read-page (current-buffer) (+ hitto--page-number 1)))
 
 (defun hitto-previous-page ()
   (interactive)
-    (hitto--read-page (current-buffer) (- hitto-page-number 1)))
+    (hitto--read-page (current-buffer) (- hitto--page-number 1)))
 
 (defun hitto-scroll-up ()
   (interactive)
@@ -106,45 +128,48 @@
 (defun hitto-increase-size ()
   (interactive)
   (progn
-    (setq hitto-image-size-factor (+ hitto-image-size-factor 1))
-    (hitto-refresh-page)))
+    (setq hitto--image-size-factor (+ hitto--image-size-factor 1))
+    (hitto--refresh-page)))
 
 (defun hitto-decrease-size ()
   (interactive)
   (progn
-    (setq hitto-image-size-factor (- hitto-image-size-factor 1))
-    (hitto-refresh-page)))
+    (setq hitto--image-size-factor (- hitto--image-size-factor 1))
+    (hitto--refresh-page)))
 
 (defun hitto-next-chapter ()
   (interactive)
   (let*
-    ((next-chapter-number (+ hitto-chapter-number 1))
-     (chapter-data (hitto--chapter-data-from-chapter-number hitto-manga-id (number-to-string next-chapter-number)))
+    ((next-chapter-number (+ hitto--chapter-number 1))
+     (chapter-data (hitto--chapter-data-from-chapter-number hitto--manga-id (number-to-string next-chapter-number)))
      (next-chapter-id (cdr (assoc 'id chapter-data))))
   (progn
     (hitto--cache-chapter next-chapter-id)
-    (hitto--save-metadata-to-buffer-local-vars hitto-manga-id hitto-manga-name next-chapter-id next-chapter-number)
-    (hitto--read-start next-chapter-id hitto-manga-name))))
+    (hitto--save-metadata-to-buffer-local-vars hitto--manga-id hitto--manga-name next-chapter-id next-chapter-number)
+    (hitto--read-start hitto--manga-name))))
+
+(defun hitto-go-to-page (page)
+  (interactive "nGoto:")
+  (hitto--read-page (current-buffer) page))
 
 ;; "Private" Functions
 ;; --------------------
 
-
-(defun hitto-refresh-page ()
-  (hitto--read-page (current-buffer) hitto-page-number))
+(defun hitto--refresh-page ()
+  (hitto--read-page (current-buffer) hitto--page-number))
 
 (defun hitto--read-page (buffer page)
-  (if (file-exists-p (hitto--page-file-name hitto-chapter-id page))
+  (if (file-exists-p (hitto--page-file-name hitto--chapter-id page))
       (let ((page-scale (hitto--page-scale))
-            (image-file (hitto--page-file-name hitto-chapter-id page))) ;; For keeping the page the same size
+            (image-file (hitto--page-file-name hitto--chapter-id page))) ;; For keeping the page the same size
         (progn
           (switch-to-buffer buffer)
           (erase-buffer)
           (insert-image (create-image image-file nil nil :scale page-scale))
-          (setq hitto-page-number page)))) nil)
+          (setq hitto--page-number page)))) nil)
 
 (defun hitto--page-scale ()
-  (+ (/ hitto-image-size-factor 10.0) 1))
+  (+ (/ hitto--image-size-factor 10.0) 1))
 
 (defun hitto--form-img-link (base-link quality chapter-hash data)
   (concat base-link "/" quality "/" chapter-hash "/" data))
@@ -176,16 +201,15 @@
 (defun hitto--chapter-formatted-metadata-string (chapter-data)
   (let
       ((chapter (hitto--assoc-recursive chapter-data 'attributes 'chapter))
-      (language (hitto--assoc-recursive chapter-data 'attributes 'translatedLanguage))
       (title (hitto--assoc-recursive chapter-data 'attributes 'title)))
     (format "Chapter %s %s" chapter title)))
 
 (defun hitto--save-metadata-to-current-buffer (manga-id manga-name chapter-id chapter-number)
   (progn
-    (setq hitto-chapter-id chapter-id)
-    (setq hitto-chapter-number chapter-number)
-    (setq hitto-manga-name manga-name)
-    (setq hitto-manga-id manga-id)))
+    (setq hitto--chapter-id chapter-id)
+    (setq hitto--chapter-number chapter-number)
+    (setq hitto--manga-name manga-name)
+    (setq hitto--manga-id manga-id)))
 
 ;; Helper functions taken from somewhere on the internet
 (defun hitto--assoc-recursive (alist &rest keys)
@@ -205,7 +229,7 @@
 (defun hitto--cache-single-page (link chapter-id iteration)
   (let ((file-name (hitto--page-file-name chapter-id iteration)))
     (unless (file-exists-p file-name)
-      (if (< iteration hitto-when-to-async)
+      (if (< iteration hitto--when-to-async)
         (plz 'get link :as `(file ,file-name))
         (plz 'get link :as `(file ,file-name) :then nil)))))
 
@@ -227,17 +251,23 @@
   (progn
     (switch-to-buffer (get-buffer-create (format "*%s*" manga-name)))
     (hitto-mode)
-    (setq-local hitto-chapter-id chapter-id
-                hitto-chapter-number chapter-number
-                hitto-manga-name manga-name
-                hitto-manga-id manga-id)))
+    (setq-local hitto--chapter-id chapter-id
+                hitto--chapter-number chapter-number
+                hitto--manga-name manga-name
+                hitto--manga-id manga-id)))
 
-(defun hitto--read-start (chapter-id name &optional page)
+(defun hitto--read-start (name &optional page)
   (or page (setq page 0))
   (let ((image-buffer (get-buffer-create (format "*%s*" name))))
     (progn
       (switch-to-buffer image-buffer)
       (hitto--read-page image-buffer page))))
+
+;; Debugging functions
+;; --------------------
+
+(defun hitto--go-to-images-directory ()
+  (find-file (format "%s/%s" hitto-view-cache-directory hitto--chapter-id)))
 
 (provide 'hitto-mode)
 ;;; hitto-mode.el ends here
