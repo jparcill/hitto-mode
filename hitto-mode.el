@@ -2,7 +2,16 @@
 ;;; hitto-mode.el --- Description
 ;;
 ;; Copyright (C) 2024 Jared Arcilla
-;; TODO Description
+;;
+;; Author: Jared Arcilla <arcillajared@gmail.com>
+;; Maintainer: Jared Arcilla <arcillajared@gmail.com>
+;; Created: January 15, 2025
+;; Modified: January 15, 2025
+;; Version: 0.0.1
+;; Keywords: multimedia
+;; Homepage: https://github.com/jparcill/hitto-mode.el
+;; Package-Requires: ((emacs "29.0"))
+
 
 (require 'image-mode)
 (require 'plz)
