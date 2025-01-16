@@ -14,3 +14,11 @@ Hitto Mode (play on Hittoman Reborn!) is a manga reader package.
 - [ ] Better search functionality that shows manga description
 - [ ] Lazily caching with a window
 - [ ] Choosing quality of the images
+
+
+
+* Test
+#+begin_src sh
+cask exec buttercup -L .
+#+end_src
+
