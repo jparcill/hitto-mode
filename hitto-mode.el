@@ -10,16 +10,16 @@
 ;; Version: 0.0.1
 ;; Keywords: multimedia
 ;; Homepage: https://github.com/jparcill/hitto-mode.el
-;; Package-Requires: ((emacs "29.0"))
+;; Package-Requires: ((emacs "29.1"))
 
-
+;;; Code:
 (require 'image-mode)
 (require 'plz)
 (require 'url-util)
 
 (defgroup hitto nil
-  "Emacs Manga reader"
-  :version "29.0"
+  "Emacs Manga reader."
+  :version "29.1"
   :group 'applications
   :group 'data
   :group 'multimedia
@@ -34,7 +34,7 @@
   :group 'hitto)
 
 (defcustom hitto-use-evil-bindings t
-  "Apply evil bindings. Similar to pdf-tools"
+  "Apply evil bindings. Similar to pdf-tools."
   :type 'boolean)
 
 (defvar-local hitto--image-size-factor 0)
@@ -46,9 +46,10 @@
 (defvar-local hitto--manga-name nil)
 
 (define-derived-mode hitto-mode fundamental-mode "Hitto Mode"
-  (if hitto-use-evil-bindings (hitto-apply-evil-bindings) nil))
+  (if hitto-use-evil-bindings (hitto--apply-evil-bindings) nil))
 
-(defun hitto-apply-evil-bindings ()
+(defun hitto--apply-evil-bindings ()
+  "Function to apply evil bindings."
   (progn
     (evil-define-key 'normal hitto-mode-map "q" 'kill-this-buffer)
     (evil-define-key 'normal hitto-mode-map "j" 'hitto-scroll-down)
@@ -86,7 +87,7 @@
 
 ;;;###autoload
 (defun hitto-search-manga (manga-string)
-  "Search for manga. First point of contact"
+  "Search for manga with MANGA-STRING. First point of contact."
   (interactive "sManga Title: ")
    (let*
        ((json-alist (plz 'get (format "https://api.mangadex.org/manga?title=%s"
@@ -119,34 +120,41 @@
 
 
 (defun hitto-next-page ()
+  "Navigate to the next page of the manga."
   (interactive)
     (hitto--read-page (current-buffer) (+ hitto--page-number 1)))
 
 (defun hitto-previous-page ()
+  "Navigate to the previous page of the manga."
   (interactive)
     (hitto--read-page (current-buffer) (- hitto--page-number 1)))
 
 (defun hitto-scroll-up ()
+  "Scroll up."
   (interactive)
   (set-window-vscroll (selected-window) (- (window-vscroll (selected-window)) 5)))
 
 (defun hitto-scroll-down ()
+  "Scroll down."
   (interactive)
     (set-window-vscroll (selected-window) (+ (window-vscroll (selected-window)) 5)))
 
 (defun hitto-increase-size ()
+  "Increase the size of the image."
   (interactive)
   (progn
     (setq hitto--image-size-factor (+ hitto--image-size-factor 1))
     (hitto--refresh-page)))
 
 (defun hitto-decrease-size ()
+  "Decrease the size of the image."
   (interactive)
   (progn
     (setq hitto--image-size-factor (- hitto--image-size-factor 1))
     (hitto--refresh-page)))
 
 (defun hitto-next-chapter ()
+  "Navigate to the next available chapter."
   (interactive)
   (let*
     ((next-chapter-number (+ hitto--chapter-number 1))
@@ -158,16 +166,18 @@
     (hitto--read-start hitto--manga-name))))
 
 (defun hitto-go-to-page (page)
+  "Go to page number PAGE."
   (interactive "nGoto:")
   (hitto--read-page (current-buffer) page))
 
-;; "Private" Functions
-;; --------------------
+;;; Private Functions
 
 (defun hitto--refresh-page ()
+  "Re-render page so that image can be inserted with updated variables."
   (hitto--read-page (current-buffer) hitto--page-number))
 
 (defun hitto--read-page (buffer page)
+  "Insert a PAGE image into a buffer BUFFER."
   (if (file-exists-p (hitto--page-file-name hitto--chapter-id page))
       (let ((page-scale (hitto--page-scale))
             (image-file (hitto--page-file-name hitto--chapter-id page))) ;; For keeping the page the same size
@@ -178,18 +188,23 @@
           (setq hitto--page-number page)))) nil)
 
 (defun hitto--page-scale ()
+  "Provide the correct scale of the image from buffer local variable."
   (+ (/ hitto--image-size-factor 10.0) 1))
 
 (defun hitto--form-img-link (base-link quality chapter-hash data)
+  "Form the link to the image given the BASE-LINK, QUALITY, CHAPTER-HASH, and DATA.
+All these are given by mangadex."
   (concat base-link "/" quality "/" chapter-hash "/" data))
 
 (defun hitto--cache-chapter (chapter-id)
+  "Cache the chapter images of CHAPTER-ID."
   (if (file-directory-p (format "%s/%s" hitto-view-cache-directory chapter-id))
       (print "Chapter already cached")
     (let ((chapter-links (hitto--get-chapter-links chapter-id)))
       (hitto--cache-from-links chapter-links chapter-id 0))))
 
 (defun hitto--get-chapter-links (chapter)
+  "Get the chapter links given an id of a CHAPTER."
   (let ((json-alist
         (plz 'get
           (format "https://api.mangadex.org/at-home/server/%s" chapter) :as #'json-read)))
@@ -205,37 +220,37 @@
            data-list)))))
 
 (defun hitto--get-title-from-data (manga-data)
+  "Get the title given MANGA-DATA."
   (hitto--assoc-recursive manga-data 'attributes 'title 'en))
 
 (defun hitto--chapter-formatted-metadata-string (chapter-data)
+  "Form the string to show up in the search results given CHAPTER-DATA."
   (let
       ((chapter (hitto--assoc-recursive chapter-data 'attributes 'chapter))
       (title (hitto--assoc-recursive chapter-data 'attributes 'title)))
     (format "Chapter %s %s" chapter title)))
 
-(defun hitto--save-metadata-to-current-buffer (manga-id manga-name chapter-id chapter-number)
-  (progn
-    (setq hitto--chapter-id chapter-id)
-    (setq hitto--chapter-number chapter-number)
-    (setq hitto--manga-name manga-name)
-    (setq hitto--manga-id manga-id)))
-
 ;; Helper functions taken from somewhere on the internet
 (defun hitto--assoc-recursive (alist &rest keys)
-  "Recursively find KEYs in ALIST."
+  "Recursively find KEYS in ALIST."
   (while keys
     (setq alist (cdr (assoc (pop keys) alist))))
   alist)
 
 
 (defun hitto--page-file-name (chapter-id iteration)
+  "Gets the file name of the page in a chapter given CHAPTER-ID and the ITERATION."
   (format "%s/%s/%06d.png" hitto-view-cache-directory chapter-id iteration))
 
 (defun hitto--cache-from-links (links chapter-id iteration)
+  "Cache all images from image LINKS of a chapter with id CHAPTER-ID. ITERATION
+is used for recursive behaviour."
   (if links (progn (hitto--cache-single-page (car links) chapter-id iteration)
                    (hitto--cache-from-links (cdr links) chapter-id (+ iteration 1)))))
 
 (defun hitto--cache-single-page (link chapter-id iteration)
+  "Cache one page from CHAPTER-ID. Retrieving the image from LINK.
+ITERATION is used as a page number."
   (let ((file-name (hitto--page-file-name chapter-id iteration)))
     (unless (file-exists-p file-name)
       (if (< iteration hitto--when-to-async)
@@ -243,7 +258,8 @@
         (plz 'get link :as `(file ,file-name) :then nil)))))
 
 (defun hitto--query-for-chapters-data (manga-id)
-  "Query mangadex. Data is formatted like Vector[Chapter Alist]"
+  "Query mangadex for data about chapters of MANGA-ID.
+Data is formatted like Vector[Chapter Alist]"
   (let*
       ((chapters-json-data (plz 'get (format "https://api.mangadex.org/manga/%s/feed?limit=100&translatedLanguage[]=en&%s=asc&includeEmptyPages=0"
                                              manga-id
@@ -252,11 +268,14 @@
     chapters-data-list))
 
 (defun hitto--chapter-data-from-chapter-number (manga-id chapter-number)
+  "Retrieve chapter data from a CHAPTER-NUMBER and MANGA-ID."
   (progn
     (car (seq-filter (lambda (chapter-data) (equal (hitto--assoc-recursive chapter-data 'attributes 'chapter) chapter-number))
                 (hitto--query-for-chapters-data manga-id)))))
 
 (defun hitto--save-metadata-to-buffer-local-vars (manga-id manga-name chapter-id chapter-number)
+  "Saving metadata to buffer local variables:
+MANGA-ID, MANGA-NAME, CHAPTER-ID and CHAPTER-NUMBER."
   (progn
     (switch-to-buffer (get-buffer-create (format "*%s*" manga-name)))
     (hitto-mode)
@@ -266,16 +285,17 @@
                 hitto--manga-id manga-id)))
 
 (defun hitto--read-start (name &optional page)
+  "Setup buffers and start reading manga with name NAME on page PAGE."
   (or page (setq page 0))
   (let ((image-buffer (get-buffer-create (format "*%s*" name))))
     (progn
       (switch-to-buffer image-buffer)
       (hitto--read-page image-buffer page))))
 
-;; Debugging functions
-;; --------------------
+;;; Debugging functions
 
 (defun hitto--go-to-images-directory ()
+  "Debugging function to visit the directory where the saved chapter is."
   (find-file (format "%s/%s" hitto-view-cache-directory hitto--chapter-id)))
 
 (provide 'hitto-mode)
