@@ -90,8 +90,7 @@
   "Search for manga with MANGA-STRING. First point of contact."
   (interactive "sManga Title: ")
    (let*
-       ((json-alist (plz 'get (format "https://api.mangadex.org/manga?title=%s"
-                                      (url-hexify-string manga-string)) :as #'json-read))
+       ((json-alist (hitto--mangadex-search-manga-title manga-string))
         (data-list (cdr (assoc 'data json-alist)))
         (title-to-id-alist (mapcar
                            (lambda (manga-data) (cons (hitto--get-title-from-data manga-data) (cdr (assoc 'id manga-data))))
@@ -205,9 +204,7 @@ All these are given by mangadex."
 
 (defun hitto--get-chapter-links (chapter)
   "Get the chapter links given an id of a CHAPTER."
-  (let ((json-alist
-        (plz 'get
-          (format "https://api.mangadex.org/at-home/server/%s" chapter) :as #'json-read)))
+  (let ((json-alist (hitto--mangadex-get-chapter-links chapter)))
       (let ((base-url (cdr (assoc 'baseUrl json-alist)))
             (chapter-hash (cdr (assoc 'hash (cdr (assoc 'chapter json-alist)))))
             (data-list (cdr (assoc 'data (cdr (assoc 'chapter json-alist))))))
@@ -261,9 +258,7 @@ ITERATION is used as a page number."
   "Query mangadex for data about chapters of MANGA-ID.
 Data is formatted like Vector[Chapter Alist]"
   (let*
-      ((chapters-json-data (plz 'get (format "https://api.mangadex.org/manga/%s/feed?limit=100&translatedLanguage[]=en&%s=asc&includeEmptyPages=0"
-                                             manga-id
-                                             (url-hexify-string "order[chapter]")) :as #'json-read))
+      ((chapters-json-data (hitto--mangadex-search-chapter manga-id))
        (chapters-data-list (cdr (assoc 'data chapters-json-data))))
     chapters-data-list))
 
@@ -291,6 +286,22 @@ MANGA-ID, MANGA-NAME, CHAPTER-ID and CHAPTER-NUMBER."
     (progn
       (switch-to-buffer image-buffer)
       (hitto--read-page image-buffer page))))
+
+(defun hitto--mangadex-search-manga-title (title)
+  "Queries mangadex for manga data from the TITLE."
+  (plz 'get (format "https://api.mangadex.org/manga?title=%s"
+                                      (url-hexify-string title)) :as #'json-read))
+
+(defun hitto--mangadex-search-chapter (manga-id)
+  "Queries for chapter data for manga MANGA-ID."
+  (plz 'get (format "https://api.mangadex.org/manga/%s/feed?limit=100&translatedLanguage[]=en&%s=asc&includeEmptyPages=0"
+                                             manga-id
+                                             (url-hexify-string "order[chapter]")) :as #'json-read))
+
+(defun hitto--mangadex-get-chapter-links (chapter-id)
+  "Queries mangadex for chapter links from the CDN with CHAPTER-ID."
+  (plz 'get
+          (format "https://api.mangadex.org/at-home/server/%s" chapter-id) :as #'json-read))
 
 ;;; Debugging functions
 
