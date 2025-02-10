@@ -177,14 +177,14 @@
 
 (defun hitto--read-page (buffer page)
   "Insert a PAGE image into a buffer BUFFER."
-  (if (file-exists-p (hitto--page-file-name hitto--chapter-id page))
+  (when (file-exists-p (hitto--page-file-name hitto--chapter-id page))
       (let ((page-scale (hitto--page-scale))
             (image-file (hitto--page-file-name hitto--chapter-id page))) ;; For keeping the page the same size
         (progn
           (switch-to-buffer buffer)
           (erase-buffer)
           (insert-image (create-image image-file nil nil :scale page-scale))
-          (setq hitto--page-number page)))) nil)
+          (setq hitto--page-number page)))))
 
 (defun hitto--page-scale ()
   "Provide the correct scale of the image from buffer local variable."
