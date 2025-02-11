@@ -158,6 +158,24 @@
         (it "can turn the next page"
           (expect 'hitto--read-page :to-have-been-called-with (current-buffer) 2))))
 
+    (describe "scrolling"
+      (before-each
+        (spy-on 'set-window-vscroll)
+        (spy-on 'window-vscroll :and-return-value 10)
+        (setq hitto--page-number 3))
+
+      (describe "hitto-scroll-up"
+        (before-each
+          (funcall-interactively #'hitto-scroll-up))
+        (it "scrolls up"
+          (expect 'set-window-vscroll :to-have-been-called-with (selected-window) 5)))
+
+      (describe "hitto-scroll-down"
+        (before-each
+          (funcall-interactively #'hitto-scroll-down))
+        (it "scrolls down"
+          (expect 'set-window-vscroll :to-have-been-called-with (selected-window) 15))))
+
     (describe "hitto-next-chapter"
       (before-each
         (spy-on 'hitto--cache-chapter :and-return-value 1)
