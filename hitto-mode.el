@@ -33,7 +33,7 @@
   :type 'directory
   :group 'hitto)
 
-(defcustom hitto-use-evil-bindings t
+(defcustom hitto-use-evil-bindings nil
   "Apply evil bindings. Similar to pdf-tools."
   :type 'boolean)
 
